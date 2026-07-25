@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TEDx Learning — learn public speaking from the speakers you admire</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark">▮</span>
+    <div>
+      <h1>TEDx Learning</h1>
+      <p class="tagline">Learn public speaking from the speakers you admire</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <select id="talk-select" aria-label="Switch talk" hidden></select>
+    <button id="new-talk" class="ghost" hidden>+ New talk</button>
+    <button id="theme-toggle" class="ghost" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main id="app">
+
+  <!-- ── 1. Landing: paste a URL ─────────────────────────────────────── -->
+  <section id="view-landing">
+    <div class="landing">
+      <h2>Paste a talk. Learn how they do it.</h2>
+      <p class="lede">
+        Give us the YouTube link of a speaker you admire. We'll study how they hold a room —
+        then you can ask how any of it works and watch the exact moments that prove it.
+      </p>
+
+      <form id="url-form" class="url-form">
+        <input id="url-input" type="url" inputmode="url" spellcheck="false"
+               placeholder="https://www.youtube.com/watch?v=…"
+               aria-label="YouTube URL of a talk" required>
+        <button type="submit" class="primary">Study this talk</button>
+      </form>
+      <p class="muted small" id="url-hint">Works with any public YouTube talk. Takes about two minutes.</p>
+      <div id="url-error" class="status error" hidden></div>
+
+      <div id="existing" class="existing" hidden>
+        <p class="muted small">Or pick one you've already studied:</p>
+        <div id="existing-list" class="chip-row"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2. Processing ───────────────────────────────────────────────── -->
+  <section id="view-processing" hidden>
+    <div class="processing">
+      <h2 id="proc-stage">Getting started…</h2>
+      <div class="progress-track"><div class="progress-fill" id="proc-fill"></div></div>
+      <ol class="stage-list" id="stage-list">
+        <li data-at="8">Fetching the video</li>
+        <li data-at="50">Transcribing every word</li>
+        <li data-at="62">Measuring pace and pauses</li>
+        <li data-at="76">Identifying speaking technique</li>
+        <li data-at="92">Mapping how the talk is built</li>
+      </ol>
+      <p class="muted small">
+        This runs in the background — indexing a 20-minute talk usually takes a couple of minutes.
+      </p>
+      <div id="proc-error" class="status error" hidden></div>
+    </div>
+  </section>
+
+  <!-- ── 3. The talk: chat + evidence ────────────────────────────────── -->
+  <section id="view-talk" hidden>
+
+    <div class="talk-head">
+      <div>
+        <h2 id="talk-title">—</h2>
+        <p class="muted small" id="talk-meta"></p>
+      </div>
+      <a id="talk-source" class="ghost-link" target="_blank" rel="noopener noreferrer" hidden>
+        Watch original ↗
+      </a>
+    </div>
+
+    <div class="quickstats" id="quickstats"></div>
+
+    <div class="chat-wrap">
+      <div id="chat-thread" class="thread"></div>
+
+      <div class="suggestions" id="suggestions"></div>
+
+      <form id="chat-form" class="chat-form">
+        <input id="chat-input" type="text" maxlength="400" autocomplete="off"
+               placeholder="Ask how they do something — e.g. “how does the opening grab attention?”"
+               aria-label="Ask about this talk">
+        <button type="submit" class="primary" id="chat-send">Ask</button>
+      </form>
+    </div>
+
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Built with <strong>VideoDB</strong> for the Global Media Intelligence Hackathon.
+    Talks belong to their respective speakers and publishers; this is an independent
+    educational project, not affiliated with or endorsed by TED.
+  </p>
+</footer>
+
+<!-- HLS playback: Chrome/Firefox can't play .m3u8 natively. If this fails to load,
+     app.js falls back to the "open in player" link so a clip is never a dead end. -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
