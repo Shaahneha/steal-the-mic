@@ -156,8 +156,30 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 32px 20px 60px; }
   height: 7px; border-radius: 4px; background: var(--gridline); overflow: hidden;
 }
 .progress-fill {
-  height: 100%; width: 4%; background: var(--accent);
-  border-radius: 4px; transition: width .5s ease;
+  height: 100%; width: 4%; border-radius: 4px;
+  transition: width .5s ease;
+  /* A moving sheen so the bar reads as working even while the % holds still. */
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-strong) 45%, var(--accent) 100%);
+  background-size: 240% 100%;
+  animation: sheen 1.8s linear infinite;
+}
+@keyframes sheen { from { background-position: 200% 0; } to { background-position: -40% 0; } }
+
+.elapsed-row {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  margin: 14px 0 0; font-size: 13px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.spinner {
+  width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid var(--baseline); border-top-color: var(--accent);
+  animation: spin .8s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .progress-fill { animation: none; }
 }
 .stage-list {
   list-style: none; padding: 0; margin: 26px 0 22px;
@@ -204,8 +226,34 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 32px 20px 60px; }
   border-radius: 12px; padding: 15px 18px;
   border: 1px solid var(--gridline); background: var(--surface-1);
 }
-.msg p { margin: 0 0 10px; }
+/* Readability: generous spacing between short paragraphs and a comfortable
+   measure, so an answer scans instead of reading as one block. */
+.msg p { margin: 0 0 14px; }
 .msg p:last-child { margin-bottom: 0; }
+.msg.bot p { max-width: 68ch; line-height: 1.68; font-size: 15.5px; }
+
+/* Quoted evidence inside an answer, set apart from the coaching around it. */
+.said {
+  color: var(--text-primary); font-weight: 550;
+  background: var(--surface-2); border-radius: 4px;
+  padding: 1px 5px; box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.thinking { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); }
+.thinking .elapsed { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.demo-slot { margin-top: 10px; }
+.demo-pending {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; border-radius: 10px;
+  background: var(--surface-2); border: 1px dashed var(--gridline);
+  font-size: 13.5px; color: var(--text-secondary);
+}
+.demo-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
 
 .msg.you {
   background: var(--accent); color: #fff; border-color: transparent;

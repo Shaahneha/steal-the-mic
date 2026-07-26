@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TEDx Learning — learn public speaking from the speakers you admire</title>
-<link rel="stylesheet" href="/static/style.css">
+<!-- ?v= is bumped whenever these change: without it the browser serves a cached
+     app.js and edits appear to have no effect. -->
+<link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
 
@@ -55,6 +57,7 @@
     <div class="processing">
       <h2 id="proc-stage">Getting started…</h2>
       <div class="progress-track"><div class="progress-fill" id="proc-fill"></div></div>
+      <p class="elapsed-row"><span class="spinner"></span><span id="proc-elapsed">0s elapsed</span></p>
       <ol class="stage-list" id="stage-list">
         <li data-at="8">Fetching the video</li>
         <li data-at="50">Transcribing every word</li>
@@ -112,6 +115,6 @@
 <!-- HLS playback: Chrome/Firefox can't play .m3u8 natively. If this fails to load,
      app.js falls back to the "open in player" link so a clip is never a dead end. -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=2"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ Positioning rules verified in tools/test_overlay_positioning.py:
 
 from videodb.editor import (
     Timeline, Track, Clip, VideoAsset, TextAsset,
-    Fit, Position, Offset, Font, Background, Alignment,
+    Fit, Position, Offset, Font, Background, Shadow, Alignment,
     HorizontalAlignment, VerticalAlignment,
 )
 
@@ -141,11 +141,19 @@ def _interleave(a, b, limit):
 
 
 def _chip(text, *, size, width, height, bg, text_color, opacity):
-    """A centred caption chip. Explicit width/height keeps the anchor correct."""
+    """A translucent annotation panel over the moment.
+
+    These are descriptions OF the moment, not subtitles of the speech, and at
+    high opacity they read as burned-in captions. Keeping them translucent lets
+    the footage tint the panel, so each one takes a shade of the moment it sits
+    on. A drop shadow carries legibility that the panel no longer provides.
+    Explicit width/height keeps the position anchor correct.
+    """
     return TextAsset(
         text=text,
         font=Font(family="Clear Sans", size=size, color=text_color),
         background=Background(color=bg, opacity=opacity, width=width, height=height),
+        shadow=Shadow(color="#000000", x=2, y=2),
         alignment=Alignment(horizontal=HorizontalAlignment.center,
                             vertical=VerticalAlignment.center),
         width=width,
@@ -155,12 +163,12 @@ def _chip(text, *, size, width, height, bg, text_color, opacity):
 
 def _title_chip(text):
     return _chip(text, size=38, width=TITLE_W, height=TITLE_H,
-                 bg="#2A78D6", text_color="#FFFFFF", opacity=0.94)
+                 bg="#2A78D6", text_color="#FFFFFF", opacity=0.58)
 
 
 def _note_chip(text):
     return _chip(text, size=27, width=NOTE_W, height=NOTE_H,
-                 bg="#101010", text_color="#F2F2EF", opacity=0.84)
+                 bg="#101010", text_color="#F7F7F5", opacity=0.42)
 
 
 # The caption renderer drops characters outside its font's range — a curly

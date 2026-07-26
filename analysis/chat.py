@@ -300,13 +300,20 @@ Write a coaching answer that:
 - explains the technique concretely, naming what the speaker actually does
 - cites specific moments by quoting the exact line from the transcript
 - uses the measured facts where they support the point (pauses, pace, energy)
-- ends with one specific thing the learner can practise
 
-Be direct and practical. 120-180 words. No preamble, no flattery.
+Format it as 2 to 3 SHORT paragraphs, each 2-3 sentences, separated by a blank
+line. One dense block is hard to read on screen. Lead each paragraph with the
+point, then the evidence.
+
+Refer to the person as "the speaker" or "they". Never use "he" or "she": nothing
+in this evidence tells you their gender, and guessing it misgenders a real person
+— the same talk has been described as both in different answers.
+
+Be direct and practical. 110-170 words total. No preamble, no flattery.
 
 Return ONLY a JSON object:
 {
-  "answer": "<your coaching answer>",
+  "answer": "<your coaching answer, paragraphs separated by a blank line>",
   "citations": [
     {
       "quote": "<exact line from the transcript above>",

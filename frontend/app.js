@@ -129,12 +129,28 @@ function pollJob(jobId) {
   if (pollTimer) clearInterval(pollTimer);
   const errorBox = $("proc-error");
 
+  // An elapsed clock is the cheapest possible proof that something is still
+  // happening — a progress bar that sits still for 40s looks broken without it.
+  const started = Date.now();
+  const clock = $("proc-elapsed");
+  const elapsedTimer = setInterval(() => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    clock.textContent = secs < 60
+      ? `${secs}s elapsed`
+      : `${Math.floor(secs / 60)}m ${secs % 60}s elapsed`;
+  }, 1000);
+
+  const stop = () => {
+    clearInterval(pollTimer);
+    clearInterval(elapsedTimer);
+  };
+
   pollTimer = setInterval(async () => {
     let job;
     try {
       job = await api(`/api/job/${encodeURIComponent(jobId)}`);
     } catch (e) {
-      clearInterval(pollTimer);
+      stop();
       clear(errorBox);
       errorBox.appendChild(el("div", null, e.message));
       errorBox.hidden = false;
@@ -151,7 +167,7 @@ function pollJob(jobId) {
     });
 
     if (job.status === "error") {
-      clearInterval(pollTimer);
+      stop();
       clear(errorBox);
       errorBox.appendChild(el("div", null, job.error || "Analysis failed."));
       const back = el("button", "ghost", "Try another talk");
@@ -160,7 +176,7 @@ function pollJob(jobId) {
       errorBox.hidden = false;
     }
     if (job.status === "done") {
-      clearInterval(pollTimer);
+      stop();
       openTalk(job.video_id);
     }
   }, 2000);
@@ -259,9 +275,31 @@ async function ask(question) {
   mine.appendChild(el("p", null, question));
   thread.appendChild(mine);
 
+  // Static text reads as "stuck" during a 20-30s wait. A moving indicator plus
+  // a changing status makes it visibly alive.
   const pending = el("div", "msg bot pending");
-  pending.appendChild(el("p", "muted", "Looking through the talk…"));
+  const row = el("p", "thinking");
+  row.appendChild(el("span", "spinner"));
+  const label = el("span", null, "Searching the transcript…");
+  row.appendChild(label);
+  const clock = el("span", "muted small elapsed", "0s");
+  row.appendChild(clock);
+  pending.appendChild(row);
   thread.appendChild(pending);
+
+  const steps = [
+    "Searching the transcript…",
+    "Checking how it was delivered…",
+    "Pulling the measured pauses…",
+    "Writing the coaching note…",
+    "Locating the exact quotes…",
+  ];
+  const started = Date.now();
+  const ticker = setInterval(() => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    clock.textContent = `${secs}s`;
+    label.textContent = steps[Math.min(steps.length - 1, Math.floor(secs / 5))];
+  }, 1000);
   thread.scrollTop = thread.scrollHeight;
   $("chat-send").disabled = true;
 
@@ -276,14 +314,51 @@ async function ask(question) {
     errorMsg.appendChild(el("p", "error-text", e.message));
     thread.appendChild(errorMsg);
   } finally {
+    clearInterval(ticker);
     $("chat-send").disabled = false;
     thread.scrollTop = thread.scrollHeight;
   }
 }
 
+/* A single dense block is hard to read on screen. Prefer the model's own
+ * paragraph breaks; if it ignored them, split long text into 2-sentence groups
+ * so an answer is never one unbroken wall. */
+function toParagraphs(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+
+  const byBlank = raw.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+  if (byBlank.length > 1) return byBlank;
+
+  if (raw.length <= 300) return [raw];
+
+  const sentences = raw.match(/[^.!?]+[.!?]+(\s|$)/g) || [raw];
+  const out = [];
+  for (let i = 0; i < sentences.length; i += 2) {
+    out.push(sentences.slice(i, i + 2).join("").trim());
+  }
+  return out.filter(Boolean);
+}
+
+/* Renders a paragraph, styling any quoted line so the evidence stands out from
+ * the coaching around it. Each piece goes in via textContent — no innerHTML. */
+function paragraphNode(text) {
+  const p = el("p");
+  const parts = String(text).split(/([“"][^“”"]{6,}[”"])/g);
+  parts.forEach((part) => {
+    if (!part) return;
+    if (/^[“"].*[”"]$/.test(part) && part.length > 8) {
+      p.appendChild(el("span", "said", part));
+    } else {
+      p.appendChild(document.createTextNode(part));
+    }
+  });
+  return p;
+}
+
 function buildAnswer(result) {
   const card = el("div", "msg bot");
-  card.appendChild(el("p", null, result.answer || ""));
+  toParagraphs(result.answer).forEach((para) => card.appendChild(paragraphNode(para)));
 
   if (result.practice) {
     const practice = el("div", "practice");
@@ -309,20 +384,23 @@ function buildAnswer(result) {
       list.appendChild(row);
     });
 
-    const button = el("button", "primary demo-btn", "▶ Show me these moments");
-    button.type = "button";
-    button.addEventListener("click", () => compileDemo(citations, button, card));
-    list.appendChild(button);
+    // The clip is the point of the answer, so build it immediately rather than
+    // making the learner ask for it a second time. A placeholder holds the
+    // space so the layout doesn't jump when the player arrives.
+    const slot = el("div", "demo-slot");
+    const pending = el("div", "demo-pending");
+    pending.appendChild(el("span", "spinner"));
+    pending.appendChild(el("span", null, "Cutting the clip that shows this…"));
+    slot.appendChild(pending);
+    list.appendChild(slot);
 
     card.appendChild(list);
+    compileDemo(citations, slot);
   }
   return card;
 }
 
-async function compileDemo(citations, button, card) {
-  button.disabled = true;
-  button.textContent = "Compiling the clip…";
-
+async function compileDemo(citations, slot) {
   // The technique becomes the on-clip title chip; the note becomes the
   // "what to watch for" line beneath it.
   const moments = citations.map((c) => ({
@@ -332,31 +410,49 @@ async function compileDemo(citations, button, card) {
     note: c.note || "",
   }));
 
+  const talkId = currentTalk.videodb_id;
   try {
     const result = await postJSON(
-      `/api/demo/${encodeURIComponent(currentTalk.videodb_id)}`, { moments });
+      `/api/demo/${encodeURIComponent(talkId)}`, { moments });
 
-    button.remove();
+    // The learner may have switched talks while this was rendering.
+    if (!currentTalk || currentTalk.videodb_id !== talkId) return;
+
+    clear(slot);
     const wrap = el("div", "demo");
     const video = el("video");
     video.controls = true;
     video.playsInline = true;
+    video.preload = "auto";
     wrap.appendChild(video);
 
+    const foot = el("div", "demo-foot");
+    const n = (result.clips || []).length;
+    foot.appendChild(el("span", "muted small",
+      `${n} moment${n === 1 ? "" : "s"} · ${Math.round(result.total_seconds)}s`));
     const link = el("a", "ghost-link", "Open in the VideoDB player ↗");
     link.href = `https://console.videodb.io/player?url=${encodeURIComponent(result.stream_url)}`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    wrap.appendChild(link);
+    foot.appendChild(link);
+    wrap.appendChild(foot);
 
-    card.appendChild(wrap);
+    slot.appendChild(wrap);
     attachStream(video, result.stream_url);
-    video.scrollIntoView({ block: "nearest", behavior: "smooth" });
   } catch (e) {
-    button.disabled = false;
-    button.textContent = "▶ Show me these moments";
-    const err = el("p", "error-text", e.message);
-    card.appendChild(err);
+    clear(slot);
+    slot.appendChild(el("p", "error-text", e.message));
+    const retry = el("button", "ghost demo-btn", "▶ Retry building the clip");
+    retry.type = "button";
+    retry.addEventListener("click", () => {
+      clear(slot);
+      const again = el("div", "demo-pending");
+      again.appendChild(el("span", "spinner"));
+      again.appendChild(el("span", null, "Cutting the clip…"));
+      slot.appendChild(again);
+      compileDemo(citations, slot);
+    });
+    slot.appendChild(retry);
   }
 }
 
