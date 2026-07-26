@@ -19,7 +19,7 @@ Built for the **Global Media Intelligence Hackathon** (hackday.videodb.io) —
 | | |
 |---|---|
 | **Demo video** | https://www.loom.com/share/c51b4c2f04e84f8ca3aa3104ccee9ed5 |
-| **Run it yourself** | four commands, see Setup below |
+| **Run it yourself** | `docker run -p 8000:7860 -e VIDEO_DB_API_KEY=… ghcr.io/shaahneha/steal-the-mic` |
 | **Source** | https://github.com/Shaahneha/steal-the-mic |
 
 Five talks ship pre-analysed — two Toastmasters world champions, a presidential address, a
@@ -146,8 +146,26 @@ the opening, the ending — the evidence is seeded from the analysis and search 
 
 ## Setup
 
-Four commands from a clean clone. A free VideoDB key (no card) is the only
-prerequisite: https://console.videodb.io
+A free VideoDB key (no card) is the only prerequisite: https://console.videodb.io
+
+### Fastest — run the container
+
+```bash
+docker run -p 8000:7860 -e VIDEO_DB_API_KEY=your_key \
+  ghcr.io/shaahneha/steal-the-mic:latest
+```
+
+Open http://localhost:8000 and paste any YouTube talk. An eight-minute talk is ready
+in about three minutes.
+
+The image ships the five analysed talks, but those live in the VideoDB collection they
+were produced from — so with your own key they aren't reachable, and the app hides them
+rather than listing entries that would fail on the first question. Bring your own talk
+and the whole pipeline runs.
+
+### Or from source
+
+Four commands from a clean clone.
 
 ```bash
 pip install -r requirements.txt
