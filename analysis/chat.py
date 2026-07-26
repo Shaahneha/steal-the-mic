@@ -298,6 +298,29 @@ def gather_context(video, analysis, sents, question, max_hits=5):
     return evidence
 
 
+def rehydrate_pauses(analysis, sents):
+    """Restore the speech either side of each pause, if it was stripped.
+
+    A deployed build ships pause timings without their surrounding text, so that
+    a public image is not carrying long verbatim stretches of the talk. The text
+    is regenerated here from the transcript once it has been fetched, which
+    keeps the deployed and local behaviour identical.
+    """
+    if not sents:
+        return
+    for bucket in ("teachable", "needs_semantic_check"):
+        for pause in analysis.get("pauses", {}).get(bucket, []) or []:
+            if pause.get("before") is not None and pause.get("after") is not None:
+                continue
+            at = pause.get("at")
+            if at is None:
+                continue
+            before = _sentence_ending_by(sents, at)
+            after = _sentence_starting_after(sents, at + pause.get("duration", 0))
+            pause["before"] = before["text"] if before else ""
+            pause["after"] = after["text"] if after else ""
+
+
 def _nearby_measurements(analysis, evidence):
     """Measured facts that overlap the evidence windows — the credibility layer."""
     spans = [(e["start"], e["end"]) for e in evidence] or [(0, analysis.get("duration", 0))]
@@ -397,6 +420,7 @@ def answer(coll, video, analysis, sents, question, video_id=None, collection=Non
     already-shown moments are deprioritised. `collection` enables cross-talk
     search for comparative questions.
     """
+    rehydrate_pauses(analysis, sents)
     evidence = gather_context(video, analysis, sents, question)
 
     # Prefer moments this learner has not been shown yet — repeating the same

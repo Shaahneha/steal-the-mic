@@ -145,19 +145,42 @@ the opening, the ending — the evidence is seeded from the analysis and search 
 
 ## Setup
 
+Four commands from a clean clone. A free VideoDB key (no card) is the only
+prerequisite: https://console.videodb.io
+
 ```bash
 pip install -r requirements.txt
-cp .env.example .env      # add your key from https://console.videodb.io
-uvicorn backend.main:app  # open http://127.0.0.1:8000 and paste a URL
+cp .env.example .env            # paste your VIDEO_DB_API_KEY into it
+
+python ingest.py                # bootstraps 5 starter talks — 25-35 min, safe to re-run
+python analyze_talk.py          # measurements + technique extraction — ~10 min
+
+uvicorn backend.main:app        # http://127.0.0.1:8000
 ```
 
-Optional CLI equivalents:
+**Why the wait:** ingestion transcribes every word and builds a visual delivery
+index every 6 seconds. That's the work the whole product rests on, and it happens
+once per talk. `ingest.py` skips talks it has already done, so an interrupted run
+resumes rather than restarting.
+
+**In a hurry?** Ingest one short talk instead — the 8-minute Toastmasters final is
+the fastest way to a working app:
 
 ```bash
-python ingest.py --url "https://www.youtube.com/watch?v=..."   # ingest + index
-python analyze_talk.py                                          # metrics + semantics
-python make_reel.py                                             # compile a reel
-python reindex_scenes.py                                        # rebuild scene index at a new interval
+python ingest.py --url "https://www.youtube.com/watch?v=GTc7nbTFxa4"
+python analyze_talk.py
+uvicorn backend.main:app
+```
+
+Then paste any YouTube talk into the app itself; it runs the same pipeline in the
+background with live progress.
+
+Other commands:
+
+```bash
+python tools/evaluate.py        # reproduce the citation-accuracy table above
+python make_reel.py             # compile a clip from the CLI
+python reindex_scenes.py        # rebuild the scene index at a new sampling interval
 ```
 
 ## Project layout

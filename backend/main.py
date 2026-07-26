@@ -14,6 +14,7 @@ if sys.stdout.encoding != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
 
 import json
+import os
 import re
 import threading
 import time
@@ -62,6 +63,21 @@ RATE_LIMITS = {
     "demo": (60, 12),       # one timeline render
 }
 DEFAULT_LIMIT = RATE_LIMITS["general"]
+
+# Hard ceiling on fresh ingests for a public deployment, on top of per-IP limits.
+# 0 means unlimited, which is the right default when running locally against
+# your own key. Set STM_MAX_INGESTS in the deployment environment.
+MAX_TOTAL_INGESTS = int(os.getenv("STM_MAX_INGESTS", "0") or 0)
+
+# Talks shipped with the build; they don't count against the ingest budget.
+SEED_MANIFEST = DATA_DIR / "seed" / "talks.json"
+SEED_URLS = []
+if SEED_MANIFEST.exists():
+    try:
+        SEED_URLS = list(json.loads(SEED_MANIFEST.read_text(encoding="utf-8"))
+                         .get("talks", {}).values())
+    except (json.JSONDecodeError, OSError):
+        SEED_URLS = []
 
 YOUTUBE_RE = re.compile(
     r"^https?://(www\.)?(youtube\.com/(watch\?v=|live/|shorts/)|youtu\.be/)[\w\-]+",
@@ -128,13 +144,30 @@ def load_analysis(video_id):
 
 
 def sentences_for(video_id):
-    """Sentence list rebuilt from the cached word-level transcript."""
+    """Sentence list rebuilt from the word-level transcript.
+
+    Reads the local cache when present; otherwise fetches from VideoDB and
+    caches it. That fallback is what lets a deployed build ship only the derived
+    analyses: full transcripts are the speaker's copyrighted words, so they stay
+    in the VideoDB collection rather than being baked into a public image.
+    """
     if video_id in _sentence_cache:
         return _sentence_cache[video_id]
+
     cached = DATA_DIR / "cache" / f"{video_id}__transcript.json"
-    if not cached.exists():
-        raise HTTPException(404, "Transcript not available yet.")
-    raw = json.loads(cached.read_text(encoding="utf-8"))
+    if cached.exists():
+        raw = json.loads(cached.read_text(encoding="utf-8"))
+    else:
+        try:
+            conn = videodb.connect()
+            manifest = load_manifest()
+            coll = conn.get_collection(collection_id=manifest["collection_id"])
+            raw = coll.get_video(video_id).get_transcript()
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(503, f"Transcript unavailable: {str(e)[:120]}") from None
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_text(json.dumps(raw), encoding="utf-8")
+
     sents = T.sentences(T.word_segments(raw))
     _sentence_cache[video_id] = sents
     return sents
@@ -148,10 +181,43 @@ def _set_job(job_id, **fields):
             _jobs[job_id].update(fields)
 
 
+def ingests_remaining():
+    """How many fresh ingests this deployment will still pay for.
+
+    Per-IP rate limiting bounds one visitor's burst; it does nothing about many
+    visitors, or one visitor with a changing address. On a public demo every
+    ingest spends the owner's credits, so there is also a hard global budget.
+    Seeded talks stay usable after it runs out — the app degrades to read-only
+    rather than breaking.
+    """
+    if MAX_TOTAL_INGESTS <= 0:
+        return None                                   # unlimited (local dev)
+    seeded = {t.get("source_url") for t in SEED_URLS}
+    fresh = sum(1 for r in manifest_talks().values()
+                if r.get("source_url") not in seeded)
+    return max(0, MAX_TOTAL_INGESTS - fresh)
+
+
+@app.get("/api/limits")
+def limits(request: Request):
+    rate_limit(request)
+    left = ingests_remaining()
+    return {"ingests_remaining": left, "capped": left is not None}
+
+
 @app.post("/api/analyse")
 def start_analysis(request: Request, background: BackgroundTasks, payload: dict):
     """Submit a talk URL. Returns a job id; everything happens in the background."""
     rate_limit(request, "analyse")
+
+    left = ingests_remaining()
+    if left == 0:
+        raise HTTPException(
+            429,
+            "This public demo has used its analysis budget for new talks. "
+            "The talks already loaded are still fully usable — pick one below. "
+            "Run it locally with your own VideoDB key to study any talk you like.",
+        )
 
     url = (payload or {}).get("url", "")
     if not isinstance(url, str) or not url.strip():

@@ -38,13 +38,20 @@ MANIFEST_FILE = DATA_DIR / "talks.json"
 
 COLLECTION_NAME = "tedx-speaking-coach"
 
-# The reference talk learners study. Swap freely — nothing downstream is
-# hardcoded to this particular speaker.
-REFERENCE_TALK = {
-    "slug": "brene-brown-vulnerability",
-    "url": "https://www.youtube.com/watch?v=X4Qm9cGRub0",
-    "title": "The power of vulnerability — Brené Brown (TEDxHouston)",
-}
+# Talks the project ships with, so `python ingest.py` bootstraps a working set
+# from a clean clone. Swap freely — nothing downstream is hardcoded to any
+# particular speaker.
+#
+# Chosen for range rather than fame: two world speaking champions, a president,
+# a conference talk, and one non-English talk that deliberately exposes where
+# the pipeline degrades (see "Honest limitations" in the README).
+STARTER_TALKS = [
+    {"slug": "toastmasters-2025", "url": "https://www.youtube.com/watch?v=GTc7nbTFxa4"},
+    {"slug": "dananjaya-2014", "url": "https://www.youtube.com/watch?v=bbz2boNSeL0"},
+    {"slug": "obama-ignorance", "url": "https://www.youtube.com/watch?v=S4lTtvlFvyk"},
+    {"slug": "ai-world-thinking", "url": "https://www.youtube.com/watch?v=UQSG41UD7jM"},
+    {"slug": "hindi-education", "url": "https://www.youtube.com/watch?v=Xdh84iEQdMQ"},
+]
 
 # Seconds per sampled scene. Shot-based extraction proved far too coarse on a
 # talk (21 shots / 20 min, a third of them slides) — see DESIGN_DECISIONS.md.
@@ -214,13 +221,18 @@ def main():
             kind=args.kind,
         )
     else:
-        ingest_talk(
-            coll, manifest,
-            url=REFERENCE_TALK["url"],
-            title=REFERENCE_TALK["title"],
-            kind="reference",
-            slug=REFERENCE_TALK["slug"],
-        )
+        # No arguments: bootstrap the whole starter set, skipping anything
+        # already ingested so the command is safe to re-run.
+        print(f"Ingesting {len(STARTER_TALKS)} starter talks. "
+              f"Roughly 25-35 minutes in total; already-ingested talks are skipped.\n")
+        for i, talk in enumerate(STARTER_TALKS, 1):
+            print(f"[{i}/{len(STARTER_TALKS)}] {talk['url']}")
+            try:
+                ingest_talk(coll, manifest, url=talk["url"],
+                            kind="reference", slug=talk["slug"])
+            except Exception as e:  # noqa: BLE001 — one bad talk must not stop the rest
+                print(f"  ! failed: {str(e)[:140]}")
+                print("  continuing with the remaining talks.")
 
     print(f"\n✓ Done. Manifest: {MANIFEST_FILE}")
     print(f"  Collection: {coll.id}")
