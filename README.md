@@ -14,12 +14,8 @@ Built for the **Global Media Intelligence Hackathon** (hackday.videodb.io) —
 
 **One-line pitch:** Paste any talk's URL and learn public speaking from it — ask how they do it, watch captioned proof.
 
-
-
 <!-- Homepage screenshot: add the actual image file at assets/screenshot.png -->
-
-![Steal the Mic homepage screenshot](assets/screenshot.png)
-
+<img width="1614" height="905" alt="image" src="https://github.com/user-attachments/assets/31f21e3f-d2b2-4396-ace3-e3f22771caef" />
 
 ## Try it
 
