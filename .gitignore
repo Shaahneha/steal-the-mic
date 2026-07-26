@@ -24,3 +24,8 @@ data/
 notes*.md
 scratch*.md
 *.local.md
+
+# Internal working notes — build log and testing aid, not part of the
+# submission. Kept locally.
+DESIGN_DECISIONS.md
+TESTING_GUIDE.md
