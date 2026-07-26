@@ -38,6 +38,41 @@ def _wants_delivery(question):
     return any(h in q for h in DELIVERY_HINTS)
 
 
+# Evidence must never be cut mid-word. The model is instructed to quote it
+# verbatim, so any truncation we introduce comes straight back as a broken quote
+# ("a career that takes m") and lands in the learner's answer. Always cut on a
+# sentence boundary, or failing that a word boundary — never a character count.
+
+def _join_sentences(sentences, max_chars=700):
+    """Whole sentences up to a budget — never a partial one."""
+    out, total = [], 0
+    for s in sentences:
+        text = s["text"].strip()
+        if out and total + len(text) > max_chars:
+            break
+        out.append(text)
+        total += len(text) + 1
+    return " ".join(out)
+
+
+def _trim_words(text, max_chars):
+    """Last-resort truncation that still lands on a word boundary."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rsplit(" ", 1)[0]
+
+
+def _sentence_ending_by(sents, t, slack=0.5):
+    candidates = [s for s in sents if s["end"] <= t + slack]
+    return candidates[-1] if candidates else None
+
+
+def _sentence_starting_after(sents, t, slack=0.5):
+    candidates = [s for s in sents if s["start"] >= t - slack]
+    return candidates[0] if candidates else None
+
+
 def _tighten(shot_start, shot_end, sents, question):
     """Narrow a broad search window to the sentences that actually match.
 
@@ -58,8 +93,7 @@ def _tighten(shot_start, shot_end, sents, question):
     if best == 0:
         # Nothing lexically matched; keep the window but cap its length.
         end = min(shot_end, shot_start + SEARCH_WINDOW_CAP)
-        text = " ".join(s["text"] for s in inside if s["start"] < end)
-        return shot_start, end, text[:600]
+        return shot_start, end, _join_sentences([s for s in inside if s["start"] < end])
 
     keep = [s for score, s in scored if score == best]
     start = min(s["start"] for s in keep)
@@ -67,8 +101,8 @@ def _tighten(shot_start, shot_end, sents, question):
     # Give a little context either side, still inside the original window.
     start = max(shot_start, start - 4)
     end = min(shot_end, end + 4)
-    text = " ".join(s["text"] for s in inside if s["end"] > start and s["start"] < end)
-    return start, end, text[:600]
+    return start, end, _join_sentences(
+        [s for s in inside if s["end"] > start and s["start"] < end])
 
 
 # Questions about technique cannot be answered by searching the transcript for
@@ -164,11 +198,19 @@ def technique_evidence(analysis, sents, question, limit=4):
             key=lambda p: -p["duration"],
         )[:limit]
         for p in dramatic:
+            # Use the actual sentences either side of the silence rather than the
+            # character-sliced before/after fields, which cut mid-word.
+            before = _sentence_ending_by(sents, p["at"])
+            after = _sentence_starting_after(sents, p["at"] + p["duration"])
+            if not (before or after):
+                continue
             picked.append({
                 "kind": "spoken",
-                "start": max(0.0, p["at"] - 3.0),
-                "end": p["at"] + p["duration"] + 3.0,
-                "text": f'[{p["duration"]:.1f}s silence] …{p["before"][-90:]} ⟨silence⟩ {p["after"][:90]}',
+                "start": max(0.0, (before["start"] if before else p["at"]) - 0.5),
+                "end": (after["end"] if after else p["at"] + p["duration"]) + 0.5,
+                "text": (f'[{p["duration"]:.1f}s silence] '
+                         f'{before["text"] if before else ""} '
+                         f'⟨silence⟩ {after["text"] if after else ""}').strip(),
             })
 
     wanted = {name for name, hints in TECHNIQUE_TRIGGERS.items() if any(h in q for h in hints)}
@@ -246,9 +288,10 @@ def gather_context(video, analysis, sents, question, max_hits=5):
         else:
             # Nothing matched in range: fall back to the transcript there, so the
             # answer is still about the right part of the talk.
-            text = " ".join(s["text"] for s in sents if lo <= s["start"] < hi)
+            window_sents = [s for s in sents if lo <= s["start"] < hi]
+            text = _join_sentences(window_sents, max_chars=1200)
             evidence = [{"kind": "spoken", "start": lo, "end": min(hi, lo + 60),
-                         "text": text[:1200]}] if text else evidence
+                         "text": text}] if text else evidence
 
     evidence.sort(key=lambda e: e["start"])
     return evidence
@@ -262,13 +305,13 @@ def _nearby_measurements(analysis, evidence):
         return any(a - 12 <= t <= b + 12 for a, b in spans)
 
     pauses = [
-        f'{p["duration"]:.1f}s silence at {int(p["at"])}s, just before: "{p["after"][:70]}"'
+        f'{p["duration"]:.1f}s silence at {int(p["at"])}s, just before: "{_trim_words(p["after"], 70)}"'
         for p in analysis["pauses"]["teachable"]
         if p["band"] == "dramatic" and overlaps(p["at"])
     ][:6]
 
     devices = [
-        f'{d["device"].replace("_", " ")} at {int(d["start"])}s: "{d["quote"][:90]}"'
+        f'{d["device"].replace("_", " ")} at {int(d["start"])}s: "{_trim_words(d["quote"], 90)}"'
         for d in analysis.get("devices", []) if overlaps(d["start"])
     ][:8]
 
@@ -296,20 +339,36 @@ HOW IT WAS DELIVERED (from video analysis):
 MEASURED FACTS (these are exact, not estimates):
 %(measured)s
 
-Write a coaching answer that:
-- explains the technique concretely, naming what the speaker actually does
-- cites specific moments by quoting the exact line from the transcript
-- uses the measured facts where they support the point (pauses, pace, energy)
+Write a short lesson with a clear spine, in connected prose.
 
-Format it as 2 to 3 SHORT paragraphs, each 2-3 sentences, separated by a blank
-line. One dense block is hard to read on screen. Lead each paragraph with the
-point, then the evidence.
+- Open with a one-sentence rule the learner could write down and use tomorrow.
+- Then trace that rule through the talk as a progression, simplest use first,
+  sharpest last. Make the ordering do work: something must change between the
+  first example and the last, and you should say what.
+- Join the examples with real connective tissue — "the same instinct shows up
+  when...", "the sharpest version comes later..." — so it reads as one argument
+  rather than a list of separate observations.
+- Close with the condition under which this technique fails or backfires, so the
+  learner knows when NOT to copy it.
+
+Never begin consecutive sentences or paragraphs with the same subject
+("The speaker uses... The speaker also uses..."). That is what makes writing
+read as a list.
 
 Refer to the person as "the speaker" or "they". Never use "he" or "she": nothing
 in this evidence tells you their gender, and guessing it misgenders a real person
 — the same talk has been described as both in different answers.
 
-Be direct and practical. 110-170 words total. No preamble, no flattery.
+CRITICAL — quoting: copy every quote EXACTLY, word for word, from the transcript
+above. Do not paraphrase, tidy grammar, or merge two lines. A quote that does not
+appear verbatim is discarded and the learner gets no video clip.
+
+Choose quotes that read as a complete thought. The transcript is machine-made, so
+some stretches break mid-sentence or mid-word — skip those and quote a clean line
+nearby instead.
+
+Format as 2-3 short paragraphs separated by a blank line; one dense block is hard
+to read on screen. 110-170 words total. Be direct. No preamble, no flattery.
 
 Return ONLY a JSON object:
 {

@@ -1,4 +1,4 @@
-/* TEDx Learning — front end.
+/* Steal the Mic — front end.
  *
  * Security note: every string rendered here (talk titles, transcript quotes,
  * model answers, error text) is untrusted as far as the browser is concerned —
@@ -111,17 +111,33 @@ async function loadExisting() {
       list.appendChild(chip);
     });
 
+    // The dropdown is an action ("switch to another talk"), not a display of
+    // current state — the talk being studied is already named in the header.
+    // It therefore always rests on a placeholder rather than showing a
+    // selection, which also avoids the old bug where rebuilding these options
+    // silently reset the visible value to whichever talk happened to be first.
     const select = $("talk-select");
     clear(select);
+    const placeholder = el("option", null, "Switch to another talk…");
+    placeholder.value = "";
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+
     talks.forEach((t) => {
       const option = el("option", null, t.title || t.videodb_id);
       option.value = t.videodb_id;
       select.appendChild(option);
     });
+    select.value = "";
   } catch (_) { /* landing still works without the list */ }
 }
 
-$("talk-select").addEventListener("change", (ev) => openTalk(ev.target.value));
+$("talk-select").addEventListener("change", (ev) => {
+  const id = ev.target.value;
+  ev.target.value = "";           // fall back to the placeholder
+  if (id) openTalk(id);
+});
 
 /* ------------------------------------------------------------- processing */
 
@@ -189,12 +205,16 @@ async function openTalk(videoId) {
   currentTalk = analysis;
 
   showView("talk");
-  $("talk-select").value = videoId;
   $("talk-title").textContent = analysis.title || "This talk";
 
   const dramatic = analysis.pauses.teachable.filter((p) => p.band === "dramatic").length;
   $("talk-meta").textContent =
-    `${mmss(analysis.duration)} · ${analysis.word_count} words · analysed`;
+    `${mmss(analysis.duration)} · ${analysis.word_count.toLocaleString()} words`;
+
+  const shown = renderPauseMap($("talk-track"), analysis);
+  $("talk-track-caption").textContent =
+    `The ${shown} longest silences, drawn as gaps. Bar height is pace — `
+    + `${analysis.pace.min_wpm} to ${analysis.pace.max_wpm} words a minute.`;
 
   const source = $("talk-source");
   if (analysis.source_url) {
@@ -216,16 +236,91 @@ function renderQuickStats(a, dramatic) {
   const host = $("quickstats");
   clear(host);
   const stats = [
-    [`${Math.round((a.silence_ratio || 0) * 100)}%`, "of the talk is silence"],
-    [a.speaking_wpm ?? "—", "words/min while speaking"],
-    [dramatic, "dramatic pauses"],
-    [(a.devices || []).length, "techniques found"],
+    [Math.round((a.silence_ratio || 0) * 100), "%", "of the talk is silence", true],
+    [a.speaking_wpm ?? "—", "", "words a minute, speaking", false],
+    [dramatic, "", "pauses held for effect", false],
+    [(a.devices || []).length, "", "techniques located", false],
   ];
-  stats.forEach(([value, label]) => {
-    const tile = el("div", "qstat");
-    tile.appendChild(el("div", "qstat-value", value));
-    tile.appendChild(el("div", "qstat-label", label));
+  stats.forEach(([value, unit, label, lead]) => {
+    const tile = el("div", lead ? "stat lead" : "stat");
+    const v = el("div", "stat-value", value);
+    if (unit) v.appendChild(el("span", "unit", unit));
+    tile.appendChild(v);
+    tile.appendChild(el("div", "stat-label", label));
     host.appendChild(tile);
+  });
+}
+
+/* ---------------------------------------------------- signature: pause map
+ *
+ * The strip is the product's own insight made visible: a talk drawn as bars,
+ * with its measured silences left as literal gaps. Every bar and gap on a talk
+ * page comes from that talk's real pause data, so the motif and the evidence
+ * are the same object.
+ */
+function renderPauseMap(host, analysis, slots = 68) {
+  clear(host);
+  const duration = analysis.duration || 0;
+  if (!duration) return;
+
+  // Only the most significant silences become gaps. A talk has ~78 dramatic
+  // pauses over ~68 slots, so marking them all left 53 of 68 bars empty and the
+  // strip read as noise rather than as absence. Gaps have to be rare to mean
+  // anything, so this takes the longest handful.
+  const dramatic = (analysis.pauses.teachable || [])
+    .filter((p) => p.band === "dramatic")
+    .sort((a, b) => b.duration - a.duration)
+    .slice(0, Math.max(6, Math.round(slots * 0.16)));
+  const longest = dramatic.reduce((m, p) => Math.max(m, p.duration), 0) || 1;
+
+  const gapAt = new Map();
+  dramatic.forEach((p) => {
+    const slot = Math.min(slots - 1, Math.floor((p.at / duration) * slots));
+    const prev = gapAt.get(slot) || 0;
+    gapAt.set(slot, Math.max(prev, p.duration));
+  });
+
+  const pace = analysis.pace && analysis.pace.buckets ? analysis.pace.buckets : [];
+  const maxWpm = pace.reduce((m, b) => Math.max(m, b.wpm), 0) || 1;
+
+  for (let i = 0; i < slots; i += 1) {
+    const bar = el("i");
+    const gap = gapAt.get(i);
+    if (gap) {
+      // Always a hole, never a coloured bar. Dramatic pauses cluster tightly in
+      // length (3.3-3.4s here), so ranking them by duration just turned every
+      // one into the "emphasis" variant and no absence was drawn at all.
+      bar.className = "gap";
+      bar.title = `${gap.toFixed(1)}s silence at ${mmss((i / slots) * duration)}`;
+    } else {
+      const t = (i / slots) * duration;
+      const bucket = pace.find((b) => t >= b.start && t < b.end);
+      const ratio = bucket ? bucket.wpm / maxWpm : 0.5;
+      bar.className = "on";
+      bar.style.height = `${28 + ratio * 52}%`;
+      if (bucket) bar.title = `${bucket.wpm} wpm at ${mmss(t)}`;
+    }
+    host.appendChild(bar);
+  }
+  return gapAt.size;
+}
+
+/* The landing strip has no talk behind it, so it is drawn as an illustrative
+ * rhythm rather than dressed up as data. */
+function renderHeroMap() {
+  const host = $("hero-track");
+  if (!host) return;
+  clear(host);
+  const pattern = [3, 4, 5, 4, 6, 5, 0, 4, 5, 6, 5, 4, 3, 0, 5, 6, 7, 6, 5, 0, 0,
+    4, 5, 6, 7, 6, 4, 3, 0, 5, 6, 5, 7, 6, 5, 4, 0, 0, 5, 6, 7, 8, 7, 5, 4, 0,
+    3, 5, 6, 5, 4, 0, 6, 7, 6, 5, 4, 3, 0, 0, 4, 6, 7, 6, 5, 4, 3, 2];
+  const peak = Math.max(...pattern);
+  pattern.forEach((v, i) => {
+    const bar = el("i");
+    bar.className = v === 0 ? "gap" : (v === peak ? "hot" : "on");
+    if (v > 0) bar.style.height = `${26 + (v / peak) * 60}%`;
+    bar.style.animationDelay = `${i * 11}ms`;
+    host.appendChild(bar);
   });
 }
 
@@ -438,7 +533,13 @@ async function compileDemo(citations, slot) {
     wrap.appendChild(foot);
 
     slot.appendChild(wrap);
-    attachStream(video, result.stream_url);
+    // If inline playback fails, say so and point at the link that does work,
+    // rather than leaving a silent black rectangle.
+    attachStream(video, result.stream_url, (why) => {
+      video.remove();
+      const note = el("p", "error-text", `${why} Use the player link below.`);
+      wrap.insertBefore(note, wrap.firstChild);
+    });
   } catch (e) {
     clear(slot);
     slot.appendChild(el("p", "error-text", e.message));
@@ -456,17 +557,55 @@ async function compileDemo(citations, slot) {
   }
 }
 
-function attachStream(video, url) {
-  if (video.canPlayType("application/vnd.apple.mpegurl")) {
-    video.src = url;                        // Safari plays HLS natively
-  } else if (window.Hls && window.Hls.isSupported()) {
-    const hls = new window.Hls();
+/* Order matters here, and getting it wrong fails silently.
+ *
+ * Several Chrome builds answer "maybe" to canPlayType("application/vnd.apple.mpegurl")
+ * while being unable to actually play HLS. Checking native support FIRST therefore
+ * set video.src to an .m3u8 Chrome cannot decode, and the player just sat there
+ * with controls and no picture — no error, nothing in the console. Media Source
+ * Extensions must be preferred wherever they exist; native HLS is the fallback,
+ * which is what Safari (no MSE for HLS) actually needs.
+ */
+function attachStream(video, url, onFail) {
+  const fail = (why) => { if (typeof onFail === "function") onFail(why); };
+
+  if (window.Hls && window.Hls.isSupported()) {
+    if (video._hls) video._hls.destroy();       // don't leak one per answer
+    const hls = new window.Hls({ enableWorker: true });
+    video._hls = hls;
+
+    hls.on(window.Hls.Events.ERROR, (_evt, data) => {
+      if (!data || !data.fatal) return;         // hls.js recovers from non-fatal
+      switch (data.type) {
+        case window.Hls.ErrorTypes.NETWORK_ERROR:
+          hls.startLoad();
+          break;
+        case window.Hls.ErrorTypes.MEDIA_ERROR:
+          hls.recoverMediaError();
+          break;
+        default:
+          hls.destroy();
+          video._hls = null;
+          fail("This clip couldn't be played here.");
+      }
+    });
+
     hls.loadSource(url);
     hls.attachMedia(video);
+    return;
   }
-  // Otherwise the "open in player" link beside it is the fallback.
+
+  if (video.canPlayType("application/vnd.apple.mpegurl")) {
+    video.src = url;                            // Safari plays HLS natively
+    video.addEventListener("error", () => fail("This clip couldn't be played here."),
+                           { once: true });
+    return;
+  }
+
+  fail("Your browser can't play this clip inline.");
 }
 
 /* ------------------------------------------------------------------- boot */
 
+renderHeroMap();
 loadExisting();

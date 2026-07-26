@@ -3,50 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TEDx Learning — learn public speaking from the speakers you admire</title>
+<title>Steal the Mic — take what great speakers do</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <!-- ?v= is bumped whenever these change: without it the browser serves a cached
      app.js and edits appear to have no effect. -->
-<link rel="stylesheet" href="/static/style.css?v=2">
+<link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="brand">
-    <span class="mark">▮</span>
-    <div>
-      <h1>TEDx Learning</h1>
-      <p class="tagline">Learn public speaking from the speakers you admire</p>
-    </div>
-  </div>
-  <div class="topbar-actions">
+  <a class="brand" href="/">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-word">Steal<em>the</em>Mic</span>
+  </a>
+  <nav class="topbar-actions">
     <select id="talk-select" aria-label="Switch talk" hidden></select>
-    <button id="new-talk" class="ghost" hidden>+ New talk</button>
-    <button id="theme-toggle" class="ghost" aria-label="Toggle theme">◐</button>
-  </div>
+    <button id="new-talk" class="btn-quiet" hidden>New talk</button>
+    <button id="theme-toggle" class="btn-quiet icon" aria-label="Switch light or dark">◐</button>
+  </nav>
 </header>
 
 <main id="app">
 
-  <!-- ── 1. Landing: paste a URL ─────────────────────────────────────── -->
+  <!-- ── 1. Landing ──────────────────────────────────────────────────── -->
   <section id="view-landing">
     <div class="landing">
-      <h2>Paste a talk. Learn how they do it.</h2>
+      <p class="eyebrow">Learn public speaking from the people who are great at it</p>
+      <h1 class="display">
+        Take what great speakers do.<br>
+        <span class="accent">Use it yourself.</span>
+      </h1>
       <p class="lede">
-        Give us the YouTube link of a speaker you admire. We'll study how they hold a room —
-        then you can ask how any of it works and watch the exact moments that prove it.
+        Paste a talk you admire. We study how they hold a room — the pauses, the pacing, the
+        way they move — then you ask how any of it works and watch the exact moments that prove it.
       </p>
 
       <form id="url-form" class="url-form">
         <input id="url-input" type="url" inputmode="url" spellcheck="false"
-               placeholder="https://www.youtube.com/watch?v=…"
-               aria-label="YouTube URL of a talk" required>
-        <button type="submit" class="primary">Study this talk</button>
+               placeholder="Paste a YouTube link" aria-label="YouTube link of a talk" required>
+        <button type="submit" class="btn-solid">Study this talk</button>
       </form>
-      <p class="muted small" id="url-hint">Works with any public YouTube talk. Takes about two minutes.</p>
-      <div id="url-error" class="status error" hidden></div>
+      <p class="hint">Any public YouTube talk. Takes about two minutes.</p>
+      <div id="url-error" class="notice bad" hidden></div>
+
+      <!-- Signature: silence rendered as gaps. Illustrative here; on a talk page
+           the same strip is drawn from that talk's real measured pauses. -->
+      <figure class="pausemap hero-pausemap" aria-hidden="true">
+        <div class="pausemap-track" id="hero-track"></div>
+        <figcaption>A great talk is roughly a third silence. That's where the craft hides.</figcaption>
+      </figure>
 
       <div id="existing" class="existing" hidden>
-        <p class="muted small">Or pick one you've already studied:</p>
+        <p class="hint">Already studied</p>
         <div id="existing-list" class="chip-row"></div>
       </div>
     </div>
@@ -55,7 +65,8 @@
   <!-- ── 2. Processing ───────────────────────────────────────────────── -->
   <section id="view-processing" hidden>
     <div class="processing">
-      <h2 id="proc-stage">Getting started…</h2>
+      <p class="eyebrow">Working on it</p>
+      <h2 class="display sm" id="proc-stage">Getting started</h2>
       <div class="progress-track"><div class="progress-fill" id="proc-fill"></div></div>
       <p class="elapsed-row"><span class="spinner"></span><span id="proc-elapsed">0s elapsed</span></p>
       <ol class="stage-list" id="stage-list">
@@ -65,38 +76,40 @@
         <li data-at="76">Identifying speaking technique</li>
         <li data-at="92">Mapping how the talk is built</li>
       </ol>
-      <p class="muted small">
-        This runs in the background — indexing a 20-minute talk usually takes a couple of minutes.
-      </p>
-      <div id="proc-error" class="status error" hidden></div>
+      <p class="hint">This runs in the background. A twenty-minute talk takes a couple of minutes.</p>
+      <div id="proc-error" class="notice bad" hidden></div>
     </div>
   </section>
 
-  <!-- ── 3. The talk: chat + evidence ────────────────────────────────── -->
+  <!-- ── 3. The talk ─────────────────────────────────────────────────── -->
   <section id="view-talk" hidden>
 
     <div class="talk-head">
-      <div>
-        <h2 id="talk-title">—</h2>
-        <p class="muted small" id="talk-meta"></p>
+      <div class="talk-id">
+        <p class="eyebrow">Studying</p>
+        <h2 class="display sm" id="talk-title">—</h2>
+        <p class="meta" id="talk-meta"></p>
       </div>
-      <a id="talk-source" class="ghost-link" target="_blank" rel="noopener noreferrer" hidden>
-        Watch original ↗
+      <a id="talk-source" class="btn-quiet" target="_blank" rel="noopener noreferrer" hidden>
+        Watch original
       </a>
     </div>
 
-    <div class="quickstats" id="quickstats"></div>
+    <figure class="pausemap">
+      <div class="pausemap-track" id="talk-track"></div>
+      <figcaption id="talk-track-caption"></figcaption>
+    </figure>
+
+    <div class="stats" id="quickstats"></div>
 
     <div class="chat-wrap">
       <div id="chat-thread" class="thread"></div>
-
       <div class="suggestions" id="suggestions"></div>
-
       <form id="chat-form" class="chat-form">
         <input id="chat-input" type="text" maxlength="400" autocomplete="off"
-               placeholder="Ask how they do something — e.g. “how does the opening grab attention?”"
+               placeholder="Ask how they do it — “how does the opening grab attention?”"
                aria-label="Ask about this talk">
-        <button type="submit" class="primary" id="chat-send">Ask</button>
+        <button type="submit" class="btn-solid" id="chat-send">Ask</button>
       </form>
     </div>
 
@@ -107,14 +120,14 @@
 <footer>
   <p>
     Built with <strong>VideoDB</strong> for the Global Media Intelligence Hackathon.
-    Talks belong to their respective speakers and publishers; this is an independent
-    educational project, not affiliated with or endorsed by TED.
+    Talks belong to their speakers and publishers; this is an independent educational
+    project, not affiliated with or endorsed by TED.
   </p>
 </footer>
 
-<!-- HLS playback: Chrome/Firefox can't play .m3u8 natively. If this fails to load,
-     app.js falls back to the "open in player" link so a clip is never a dead end. -->
+<!-- HLS playback: Chrome and Firefox can't play .m3u8 natively. If this fails to
+     load, app.js falls back to the player link so a clip is never a dead end. -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-<script src="/static/app.js?v=2"></script>
+<script src="/static/app.js?v=6"></script>
 </body>
 </html>

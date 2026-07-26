@@ -110,7 +110,7 @@ def get_project_collection(conn, manifest: dict):
 
     coll = conn.create_collection(
         name=COLLECTION_NAME,
-        description="TEDx Learning — public speaking technique analysis",
+        description="Steal the Mic — public speaking technique analysis",
     )
     print(f"Created collection {coll.id} ({COLLECTION_NAME})")
     return coll

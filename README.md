@@ -1,6 +1,8 @@
-# TEDx Learning
+# Steal the Mic
 
-**Paste a talk. Ask how they do it. Watch the exact moments that prove it.**
+**Take what great speakers do. Use it yourself.**
+
+Paste a talk you admire, ask how they hold a room, and watch short captioned clips cut from the video that prove it.
 
 Great speakers make it look effortless, which is exactly the problem: you watch a brilliant talk,
 feel the effect, and can't say *why* it worked. Give this the YouTube link of a speaker you admire
@@ -22,15 +24,15 @@ Built for the **Global Media Intelligence Hackathon** (hackday.videodb.io) —
 3. **A deterministic pass measures** pace, pauses and silence ratio straight from word-level
    timestamps. A semantic pass then names rhetorical devices and maps the talk's structure.
 4. **You ask questions.** Answers are grounded in all three sources — what was said, how it was
-   delivered, and what was measured — so the tool can say *"she holds a 3.4-second silence before
+   delivered, and what was measured — so the tool can say *"a 3.4-second silence is held before
    this line"* as a fact rather than a guess.
-5. **Hit "Show me these moments"** and the cited moments compile into one short clip with the
-   technique captioned on screen.
+5. **The clip builds itself.** Every answer's cited moments compile automatically into one short
+   clip with the technique captioned on screen — no extra click.
 
 ## The demonstration clips
 
-The centrepiece. Rather than telling you "she uses dramatic pauses", it cuts the actual moments
-together and captions them:
+The centrepiece. Rather than telling you "the speaker uses dramatic pauses", it cuts the actual
+moments together and captions them:
 
 ```
 ┌──────────────────────────────┐
@@ -120,7 +122,7 @@ python reindex_scenes.py                                        # rebuild scene 
 ## Project layout
 
 ```
-tedxLearning/
+steal-the-mic/
 ├── ingest.py                 # upload + spoken/scene indexing
 ├── analyze_talk.py           # full analysis -> data/analysis__<id>.json
 ├── compute_metrics.py        # deterministic metrics + transcript cache

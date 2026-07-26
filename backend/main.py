@@ -1,4 +1,4 @@
-"""TEDx Learning — web portal.
+"""Steal the Mic — web portal.
 
 Submit the YouTube URL of a speaker you admire. The talk is ingested and indexed
 in the background, then you can ask how they do what they do and get answers
@@ -67,7 +67,7 @@ YOUTUBE_RE = re.compile(
     re.I,
 )
 
-app = FastAPI(title="TEDx Learning")
+app = FastAPI(title="Steal the Mic")
 
 _jobs = {}
 _jobs_lock = threading.Lock()
