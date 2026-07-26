@@ -29,6 +29,8 @@ scratch*.md
 # submission. Kept locally.
 DESIGN_DECISIONS.md
 TESTING_GUIDE.md
+SUBMISSION.md
+DEMO_SCRIPT.md
 
 # Local snapshots taken before risky edits. Working files, not submission.
 backups/

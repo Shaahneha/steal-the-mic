@@ -227,9 +227,54 @@ async function openTalk(videoId) {
   renderQuickStats(analysis, dramatic);
   clear($("chat-thread"));
   addSystemCard(analysis);
+  await restoreConversation(videoId);
   await renderSuggestions();
   await loadExisting();
   $("chat-input").focus();
+}
+
+/* Replays the remembered conversation. This is the visible half of "remember":
+ * leave a talk, come back, and the thread is still there. Clips are not
+ * recompiled on restore — that would cost a render per remembered turn — so
+ * each past answer offers to rebuild its clip on demand. */
+async function restoreConversation(videoId) {
+  let turns = [];
+  try {
+    ({ turns } = await api(`/api/history/${encodeURIComponent(videoId)}`));
+  } catch (_) { return; }
+  if (!turns || !turns.length) return;
+
+  const thread = $("chat-thread");
+  const banner = el("div", "resumed");
+  banner.appendChild(el("span", null,
+    `Picking up where you left off — ${turns.length} question${turns.length === 1 ? "" : "s"} so far`));
+  const clearBtn = el("button", "link-btn", "Start fresh");
+  clearBtn.type = "button";
+  clearBtn.addEventListener("click", async () => {
+    await api(`/api/history/${encodeURIComponent(videoId)}`, { method: "DELETE" });
+    clear(thread);
+    addSystemCard(currentTalk);
+  });
+  banner.appendChild(clearBtn);
+  thread.appendChild(banner);
+
+  turns.forEach((turn) => {
+    const mine = el("div", "msg you");
+    mine.appendChild(el("p", null, turn.question));
+    thread.appendChild(mine);
+
+    thread.appendChild(buildAnswer({
+      answer: turn.answer,
+      practice: turn.practice,
+      citations: (turn.moments || []).map((m) => ({
+        quote: m.quote,
+        technique: m.technique,
+        note: "",
+        start: m.start,
+        end: (m.start || 0) + 6,
+      })),
+    }, { deferClip: true }));
+  });
 }
 
 function renderQuickStats(a, dramatic) {
@@ -451,7 +496,7 @@ function paragraphNode(text) {
   return p;
 }
 
-function buildAnswer(result) {
+function buildAnswer(result, opts = {}) {
   const card = el("div", "msg bot");
   toParagraphs(result.answer).forEach((para) => card.appendChild(paragraphNode(para)));
 
@@ -479,18 +524,34 @@ function buildAnswer(result) {
       list.appendChild(row);
     });
 
-    // The clip is the point of the answer, so build it immediately rather than
-    // making the learner ask for it a second time. A placeholder holds the
-    // space so the layout doesn't jump when the player arrives.
     const slot = el("div", "demo-slot");
-    const pending = el("div", "demo-pending");
-    pending.appendChild(el("span", "spinner"));
-    pending.appendChild(el("span", null, "Cutting the clip that shows this…"));
-    slot.appendChild(pending);
     list.appendChild(slot);
-
     card.appendChild(list);
-    compileDemo(citations, slot);
+
+    if (opts.deferClip) {
+      // A restored turn doesn't auto-render: recompiling every remembered
+      // answer would fire a render per turn on page load.
+      const rebuild = el("button", "demo-btn", "▶ Rebuild this clip");
+      rebuild.type = "button";
+      rebuild.addEventListener("click", () => {
+        clear(slot);
+        const pending = el("div", "demo-pending");
+        pending.appendChild(el("span", "spinner"));
+        pending.appendChild(el("span", null, "Cutting the clip…"));
+        slot.appendChild(pending);
+        compileDemo(citations, slot);
+      });
+      slot.appendChild(rebuild);
+    } else {
+      // For a live answer the clip is the point, so build it immediately rather
+      // than making the learner ask twice. A placeholder holds the space so the
+      // layout doesn't jump when the player arrives.
+      const pending = el("div", "demo-pending");
+      pending.appendChild(el("span", "spinner"));
+      pending.appendChild(el("span", null, "Cutting the clip that shows this…"));
+      slot.appendChild(pending);
+      compileDemo(citations, slot);
+    }
   }
   return card;
 }

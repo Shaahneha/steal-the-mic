@@ -394,6 +394,20 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 56px 22px 80px; }
 
 .suggestions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* Memory made visible: the thread resumes where it was left. */
+.resumed {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+  border-bottom: 1px dashed var(--edge); padding-bottom: 12px;
+}
+.link-btn {
+  background: none; border: none; padding: 0;
+  color: var(--cool); font-family: var(--mono); font-size: 11.5px;
+  text-decoration: underline; cursor: pointer;
+}
+.link-btn:hover { color: var(--spot); }
+
 .chat-form {
   display: flex; gap: 10px; position: sticky; bottom: 0;
   padding: 14px 0; background: var(--house);

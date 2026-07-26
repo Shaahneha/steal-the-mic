@@ -11,7 +11,20 @@ classification needs a semantic pass (see metrics.classify_pauses).
 """
 
 NON_SPEECH = "-"
-SENTENCE_END = (".", "!", "?")
+
+# Sentence terminators across the scripts this is likely to meet. Latin
+# punctuation alone is not enough: a 45-minute Hindi talk produced twelve
+# "sentences" because Devanagari ends sentences with the danda (।), which no
+# Latin terminator matches. Everything downstream — LLM chunking, device
+# extraction, structure mapping, quote location — degrades from that one gap,
+# so the talk returned 6 devices where a comparable English talk returned 63.
+SENTENCE_END = (
+    ".", "!", "?",
+    "।", "॥",        # Devanagari danda and double danda
+    "۔",             # Urdu/Arabic full stop
+    "。", "！", "？",  # CJK
+    "…",
+)
 
 
 def word_segments(raw_transcript):

@@ -14,6 +14,45 @@ Built for the **Global Media Intelligence Hackathon** (hackday.videodb.io) —
 
 **One-line pitch:** Paste any talk's URL and learn public speaking from it — ask how they do it, watch captioned proof.
 
+## Try it
+
+| | |
+|---|---|
+| **Live app** | _deploying — link here_ |
+| **Demo video** | _recording — link here_ |
+| **Source** | https://github.com/Shaahneha/steal-the-mic |
+
+Two talks are pre-analysed, so you can ask a question and watch a clip without waiting for
+ingestion. Pasting your own YouTube link runs the full pipeline live.
+
+---
+
+## The loop: perceive → remember → act
+
+| | |
+|---|---|
+| **Perceive** | Two indexes per talk, not one. `index_spoken_words` gives a word-level transcript; `index_scenes` runs every 6 seconds with a delivery-specific prompt that returns posture, gesture, gaze and energy. Semantic search runs over **both**, and `coll.search` runs across every studied talk. |
+| **Remember** | Conversations persist per talk on disk. A follow-up like *"and the ending?"* resolves against earlier turns, moments already shown are deprioritised so answers stop repeating themselves, and reopening a talk restores the thread. |
+| **Act** | Answers are compiled, not just written: cited moments become a short clip through the Editor timeline with the technique captioned over the footage — and clips are snapped away from slides so the speaker is actually on screen. |
+
+## VideoDB primitives used
+
+| Pillar | Primitive | Where |
+|--------|-----------|-------|
+| **Ingest** | `coll.upload(url=...)` — ingest any talk from a YouTube URL | `ingest.py` |
+| **Ingest** | `conn.create_collection()` — a dedicated collection, so the app never touches unrelated media in the account | `ingest.py::get_project_collection` |
+| **Index** | `video.index_spoken_words()` — word-level transcript | `ingest.py` |
+| **Index** | `video.index_scenes(extraction_type=time_based)` — delivery-focused visual index every 6s | `ingest.py` |
+| **Search** | `video.search(search_type=semantic)` — spoken-word semantic search for chat evidence | `analysis/chat.py` |
+| **Search** | `video.search(index_type=IndexType.scene, scene_index_id=…)` — visual search for delivery questions | `analysis/chat.py` |
+| **Search** | `coll.search(search_type=semantic)` — across every studied talk at once, merged with per-video results so one talk's abundance of matches can't crowd the others out | `analysis/chat.py::search_across_talks` |
+| **Act** | `coll.generate_text(response_type="json")` — chat answers, rhetorical devices, structure, pause intent | `analysis/chat.py`, `analysis/semantic.py` |
+| **Act** | `Timeline` / `Track` / `VideoAsset` / `TextAsset` / `generate_stream()` — captioned demonstration clips | `analysis/reel.py` |
+| **Act** | `video.extract_scenes()` + frame URLs — used to visually verify rendered captions | `tools/test_overlay_positioning.py` |
+
+Every LLM call runs through VideoDB's own `generate_text()`. No external LLM API is used anywhere
+in the runtime path.
+
 ---
 
 ## How it works
@@ -53,31 +92,24 @@ Three rules make these clips teach rather than confuse:
 
 ---
 
-## VideoDB primitives used
-
-| Pillar | Primitive | Where |
-|--------|-----------|-------|
-| **Ingest** | `coll.upload(url=...)` — ingest any talk from a YouTube URL | `ingest.py` |
-| **Ingest** | `conn.create_collection()` — a dedicated collection, so the app never touches unrelated media in the account | `ingest.py::get_project_collection` |
-| **Index** | `video.index_spoken_words()` — word-level transcript | `ingest.py` |
-| **Index** | `video.index_scenes(extraction_type=time_based)` — delivery-focused visual index every 6s | `ingest.py` |
-| **Search** | `video.search(search_type=semantic)` — spoken-word semantic search for chat evidence | `analysis/chat.py` |
-| **Search** | `video.search(index_type=IndexType.scene, scene_index_id=…)` — visual search for delivery questions | `analysis/chat.py` |
-| **Act** | `coll.generate_text(response_type="json")` — chat answers, rhetorical devices, structure, pause intent | `analysis/chat.py`, `analysis/semantic.py` |
-| **Act** | `Timeline` / `Track` / `VideoAsset` / `TextAsset` / `generate_stream()` — captioned demonstration clips | `analysis/reel.py` |
-| **Act** | `video.extract_scenes()` + frame URLs — used to visually verify rendered captions | `tools/test_overlay_positioning.py` |
-
-Every LLM call runs through VideoDB's own `generate_text()`. No external LLM API is used anywhere.
-
----
-
 ## Two design rules worth stealing
 
 **The model never emits a timestamp.** It names a technique and quotes the line verbatim; we locate
 that quote in the word-level transcript to derive exact times. A hallucinated timestamp would
 silently point a clip at the wrong moment — a hallucinated *quote* simply fails to match and gets
-dropped. On the reference talk this gave **40/40 quotes matched exactly**, with a fabricated one
-correctly discarded.
+dropped.
+
+Measured, not asserted. `tools/evaluate.py` runs a fixed question set across every studied talk and
+checks each returned citation against the transcript at the timestamp it claims:
+
+| | Latin-script (4 talks) | Devanagari (1 talk) |
+|---|---|---|
+| Citations returned | 87 | 10 |
+| **Verified in transcript** | **87 (100%)** | 7 (70%) |
+| Answers with no citation | 0 | 0 |
+| Answers needing a fallback path | 0 | 2 |
+
+Reproduce with `python tools/evaluate.py`.
 
 **Technique questions don't go to text search.** A speaker demonstrating a pause never says the word
 "pause", and nobody announces "here comes my rule of three". Searching for those terms finds people
@@ -99,6 +131,15 @@ the opening, the ending — the evidence is seeded from the analysis and search 
   judgements. The UI keeps that distinction.
 - **The tool cannot see how a speaker prepared.** No rehearsal footage exists. It reverse-engineers
   the craft visible in the finished talk.
+- **Non-English degrades measurably, on two separate axes.** Tested on a 45-minute Hindi talk and
+  measured, not guessed. Ingestion, transcription, pause detection and the visual delivery index all
+  work — body-language analysis genuinely doesn't care what language you speak (418 of 459 frames
+  scored). What degrades is **volume** (8 devices per talk against 32, and zero structure beats
+  against 10) and **accuracy** (70% of citations verified against 100%). Sentence segmentation was
+  one cause and is fixed: Devanagari ends sentences with a danda (`।`), which the splitter did not
+  know, so a 45-minute talk collapsed into 12 sentences. The remainder is a real limit — the visual
+  half is language-agnostic, the semantic half is effectively English-only. The pace figure for that
+  talk (400 wpm) is also inflated by word-timing artifacts and should not be trusted.
 
 ---
 

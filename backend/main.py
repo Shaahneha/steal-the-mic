@@ -35,6 +35,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(PROJECT_ROOT.parent / ".env")
 
 from analysis import chat as chat_engine      # noqa: E402
+from analysis import memory                   # noqa: E402
 from analysis import reel as reel_builder     # noqa: E402
 from analysis import transcript as T          # noqa: E402
 from ingest import load_manifest, save_manifest  # noqa: E402
@@ -310,7 +311,71 @@ def chat(video_id: str, request: Request, payload: dict):
     coll = conn.get_collection(collection_id=manifest["collection_id"])
     video = coll.get_video(video_id)
 
-    return chat_engine.answer(coll, video, analysis, sents, question)
+    result = chat_engine.answer(coll, video, analysis, sents, question, video_id=video_id)
+
+    # Remember the exchange so follow-ups can build on it and the thread survives
+    # a reload — memory that only lives in the page is not memory.
+    memory.remember(video_id, question, result.get("answer", ""),
+                    result.get("citations", []), result.get("practice"))
+    result["covered"] = memory.topics_covered(video_id)
+    return result
+
+
+@app.get("/api/history/{video_id}")
+def history(video_id: str, request: Request):
+    """The remembered conversation for a talk."""
+    rate_limit(request)
+    require_known_video(video_id)
+    return {"turns": memory.load(video_id)}
+
+
+@app.delete("/api/history/{video_id}")
+def clear_history(video_id: str, request: Request):
+    rate_limit(request)
+    require_known_video(video_id)
+    memory.forget(video_id)
+    return {"cleared": video_id}
+
+
+@app.post("/api/search")
+def search_all(request: Request, payload: dict):
+    """Search every studied talk at once and group the moments by talk."""
+    rate_limit(request, "chat")
+
+    query = (payload or {}).get("query", "")
+    if not isinstance(query, str) or not query.strip():
+        raise HTTPException(400, "What are you looking for?")
+    query = query.strip()[:MAX_QUESTION_LENGTH]
+
+    talks = manifest_talks()
+    analysed = {k: v for k, v in talks.items() if analysis_path(k).exists()}
+    if not analysed:
+        raise HTTPException(404, "No talks studied yet.")
+
+    conn = videodb.connect()
+    manifest = load_manifest()
+    coll = conn.get_collection(collection_id=manifest["collection_id"])
+
+    hits = chat_engine.search_across_talks(coll, analysed, query)
+
+    grouped = {}
+    for hit in hits:
+        record = analysed.get(hit["video_id"])
+        if not record:
+            continue                      # never surface media this app doesn't own
+        bucket = grouped.setdefault(hit["video_id"], {
+            "videodb_id": hit["video_id"],
+            "title": record.get("title"),
+            "moments": [],
+        })
+        if len(bucket["moments"]) < 4:
+            bucket["moments"].append({
+                "start": round(hit["start"], 2),
+                "end": round(hit["end"], 2),
+                "text": hit["text"],
+            })
+
+    return {"query": query, "talks": list(grouped.values())}
 
 
 @app.post("/api/demo/{video_id}")

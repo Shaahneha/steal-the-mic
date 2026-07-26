@@ -19,6 +19,7 @@ import re
 from videodb import IndexType, SearchType
 from videodb.exceptions import InvalidRequestError
 
+from . import memory
 from . import transcript as T
 from .semantic import as_list, generate_json, locate_quote
 
@@ -327,7 +328,7 @@ def _nearby_measurements(analysis, evidence):
 ANSWER_PROMPT = """You are a public-speaking coach helping someone learn from a talk they admire.
 
 Their question: "%(question)s"
-
+%(memory)s
 Below is evidence from the talk. Use ONLY this evidence — do not invent examples.
 
 WHAT WAS SAID (from the transcript):
@@ -389,9 +390,33 @@ them short, concrete and instructive — "Watch the 4-second silence land" beats
 "effective use of pausing"."""
 
 
-def answer(coll, video, analysis, sents, question):
-    """Answer a question about the talk with located, playable citations."""
+def answer(coll, video, analysis, sents, question, video_id=None, collection=None):
+    """Answer a question about the talk with located, playable citations.
+
+    `video_id` enables conversation memory: earlier turns shape this answer and
+    already-shown moments are deprioritised. `collection` enables cross-talk
+    search for comparative questions.
+    """
     evidence = gather_context(video, analysis, sents, question)
+
+    # Prefer moments this learner has not been shown yet — repeating the same
+    # pause in every answer teaches nothing new. Only reorders; never discards,
+    # so a genuinely best-fitting moment can still win when nothing else exists.
+    if video_id:
+        seen = memory.seen_moments(video_id)
+        if seen:
+            evidence.sort(key=lambda e: memory.is_seen(seen, e["start"]))
+
+    memory_block = ""
+    if video_id:
+        prior = memory.conversation_context(video_id)
+        if prior:
+            memory_block = (
+                "\nEarlier in this conversation:\n" + prior
+                + "\nIf this question follows on from those, connect to them rather than "
+                  "repeating ground already covered.\n"
+            )
+
     pauses, devices, energy = _nearby_measurements(analysis, evidence)
 
     spoken = "\n".join(
@@ -406,6 +431,7 @@ def answer(coll, video, analysis, sents, question):
 
     result = generate_json(coll, ANSWER_PROMPT % {
         "question": question[:400],
+        "memory": memory_block,
         "spoken": spoken[:5000],
         "delivery": delivery[:2000],
         "measured": measured[:2000],
@@ -432,8 +458,30 @@ def answer(coll, video, analysis, sents, question):
             "end": location["end"],
         })
 
-    # Fall back to the search windows if the model quoted nothing locatable, so
-    # an answer is never left without playable evidence.
+    # Structured output is unreliable call to call: sometimes the citations array
+    # comes back unusable while the prose itself quotes the transcript correctly.
+    # Recovering quotes from the answer text salvages real, locatable moments
+    # instead of dropping to generic "Key moment" labels.
+    if not citations:
+        prose = str(result.get("answer", ""))
+        for quoted in re.findall(r"[“\"]([^“”\"]{12,200})[”\"]", prose):
+            location = locate_quote(sents, quoted)
+            if not location:
+                continue
+            if any(abs(location["start"] - c["start"]) < 2 for c in citations):
+                continue
+            citations.append({
+                "quote": location["text"],
+                "technique": "Cited moment",
+                "note": "Quoted in the answer above",
+                "start": location["start"],
+                "end": location["end"],
+            })
+            if len(citations) >= 4:
+                break
+
+    # Last resort: the search windows themselves, so an answer is never left
+    # without playable evidence.
     if not citations and evidence:
         for e in evidence[:3]:
             citations.append({
@@ -459,6 +507,65 @@ def answer(coll, video, analysis, sents, question):
         "citations": citations,
         "practice": (str(result.get("practice", "")).strip() or None),
     }
+
+
+def search_across_talks(collection, manifest_talks, query, per_talk=2, max_talks=6):
+    """Search every studied talk at once, via collection-level semantic search.
+
+    Per-video search answers "how does THIS speaker do it". This answers "who
+    does it best", which is a different and more interesting question once more
+    than one talk has been studied — and it is the only thing `coll.search()`
+    can do that per-video search cannot.
+
+    Falls back to per-video search and merges, because a single collection-wide
+    ranked list lets one talk's abundance of strong matches crowd the others out
+    entirely.
+    """
+    hits = []
+
+    try:
+        results = collection.search(query=query, search_type=SearchType.semantic)
+        for shot in results.get_shots():
+            hits.append({
+                "video_id": getattr(shot, "video_id", None),
+                "start": float(getattr(shot, "start", 0)),
+                "end": float(getattr(shot, "end", 0)),
+                "text": (getattr(shot, "text", "") or "")[:300],
+            })
+    except InvalidRequestError:
+        pass
+    except Exception:  # noqa: BLE001 — fall through to the per-video path
+        pass
+
+    # Guarantee representation: search each talk directly and merge, so a talk
+    # that simply matches less strongly still gets a voice.
+    for video_id in list(manifest_talks)[:max_talks]:
+        try:
+            video = collection.get_video(video_id)
+            results = video.search(query, search_type=SearchType.semantic)
+            for shot in results.get_shots()[:per_talk]:
+                hits.append({
+                    "video_id": video_id,
+                    "start": float(shot.start),
+                    "end": float(shot.end),
+                    "text": (getattr(shot, "text", "") or "")[:300],
+                })
+        except InvalidRequestError:
+            continue
+        except Exception:  # noqa: BLE001
+            continue
+
+    # De-duplicate: the collection search and the per-video search overlap.
+    seen, merged = set(), []
+    for hit in hits:
+        key = (hit["video_id"], round(hit["start"] / 5))
+        if key in seen or not hit["video_id"]:
+            continue
+        seen.add(key)
+        merged.append(hit)
+
+    merged.sort(key=lambda h: (h["video_id"], h["start"]))
+    return merged
 
 
 SUGGESTIONS = [
