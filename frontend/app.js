@@ -101,8 +101,16 @@ async function loadExisting() {
     const talks = await api("/api/talks");
     const wrap = $("existing");
     const list = $("existing-list");
+    const byo = $("byo");
     clear(list);
-    if (!talks.length) { wrap.hidden = true; return; }
+    if (!talks.length) {
+      // No reachable talks — say so and point at the input, rather than
+      // leaving a blank space that looks like a failed load.
+      wrap.hidden = true;
+      if (byo) byo.hidden = false;
+      return;
+    }
+    if (byo) byo.hidden = true;
     wrap.hidden = false;
     talks.forEach((t) => {
       const chip = el("button", "chip", t.title || t.videodb_id);
@@ -225,6 +233,7 @@ async function openTalk(videoId) {
   }
 
   renderQuickStats(analysis, dramatic);
+  renderDimensions(analysis);
   clear($("chat-thread"));
   addSystemCard(analysis);
   await restoreConversation(videoId);
@@ -294,6 +303,69 @@ function renderQuickStats(a, dramatic) {
     tile.appendChild(el("div", "stat-label", label));
     host.appendChild(tile);
   });
+}
+
+/* ------------------------------------------------- three signal types
+ *
+ * Temporal figures are measurements from word timestamps. Behavioural and
+ * spatial figures are counts of how often something was *described* in a
+ * sampled frame — which is not the same claim, so the wording says "of frames"
+ * and weakly-evidenced rates are marked rather than presented as findings.
+ */
+function renderDimensions(a) {
+  const d = a.dimensions;
+  const host = $("dims");
+  if (!d) { host.hidden = true; return; }
+  host.hidden = false;
+
+  const cov = d.coverage || {};
+  $("dims-coverage").textContent =
+    `One upload, three kinds of evidence. Behavioural and spatial read from `
+    + `${cov.frames_with_speaker} of ${cov.frames_sampled} sampled frames — `
+    + `slides and audience shots are excluded rather than guessed at.`;
+
+  const t = d.temporal || {};
+  fillDim("dim-temporal", [
+    [`${t.silence_pct}%`, "of the talk is silence", false],
+    [`${t.speaking_wpm}`, "words a minute while speaking", false],
+    [`${t.pace_swing}`, `wpm swing (${(t.pace_range || []).join("–")})`, false],
+    [`${t.held_pauses}`, `pauses held for effect · longest ${t.longest_pause}s`, false],
+  ]);
+
+  const b = d.behavioural || {};
+  fillDim("dim-behavioural", signalRows(b.signals), b.frames);
+
+  const s = d.spatial || {};
+  const rows = signalRows(s.signals);
+  rows.unshift([s.stage_use || "—", "how they use the stage", false]);
+  fillDim("dim-spatial", rows, s.frames);
+}
+
+function signalRows(signals) {
+  return Object.entries(signals || {})
+    .sort((x, y) => y[1].pct - x[1].pct)
+    .map(([name, v]) => [`${v.pct}%`, `of frames show ${name}`, v.weak]);
+}
+
+function fillDim(id, rows, frames) {
+  const list = $(id).querySelector(".dim-list");
+  clear(list);
+  rows.forEach(([value, label, weak]) => {
+    const li = el("li");
+    li.appendChild(el("span", "dim-value", value));
+    li.appendChild(el("span", "dim-label", label));
+    if (weak) {
+      const flag = el("span", "dim-weak", "thin evidence");
+      flag.title = "Described in too few frames to read as a finding — "
+        + "absence of description is not description of absence.";
+      li.appendChild(flag);
+    }
+    list.appendChild(li);
+  });
+  if (frames) {
+    const foot = el("li", "dim-foot", `across ${frames} frames where the speaker was visible`);
+    list.appendChild(foot);
+  }
 }
 
 /* ---------------------------------------------------- signature: pause map

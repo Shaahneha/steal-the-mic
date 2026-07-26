@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <!-- ?v= is bumped whenever these change: without it the browser serves a cached
      app.js and edits appear to have no effect. -->
-<link rel="stylesheet" href="/static/style.css?v=7">
+<link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body>
 
@@ -59,6 +59,15 @@
         <p class="hint">Already studied</p>
         <div id="existing-list" class="chip-row"></div>
       </div>
+
+      <!-- Shown when the build ships with no reachable talks — running your own
+           container with your own key, for instance. -->
+      <div id="byo" class="existing" hidden>
+        <p class="hint">
+          Nothing studied yet on this instance. Paste any talk above and it'll be
+          ready in a couple of minutes — an eight-minute talk takes about three.
+        </p>
+      </div>
     </div>
   </section>
 
@@ -102,6 +111,32 @@
 
     <div class="stats" id="quickstats"></div>
 
+    <!-- Three signal types from one upload. The point is that they answer
+         different questions and none substitutes for another. -->
+    <section class="dims" id="dims" hidden>
+      <div class="dims-head">
+        <p class="eyebrow">What VideoDB pulled out of this video</p>
+        <p class="dims-sub" id="dims-coverage"></p>
+      </div>
+      <div class="dim-grid">
+        <article class="dim" id="dim-temporal">
+          <header><span class="dim-tag">Temporal</span><h3>When things happen</h3></header>
+          <p class="dim-src">Word-level transcript · measured, not inferred</p>
+          <ul class="dim-list"></ul>
+        </article>
+        <article class="dim" id="dim-behavioural">
+          <header><span class="dim-tag">Behavioural</span><h3>What the speaker does</h3></header>
+          <p class="dim-src">Scene index · described per sampled frame</p>
+          <ul class="dim-list"></ul>
+        </article>
+        <article class="dim" id="dim-spatial">
+          <header><span class="dim-tag">Spatial</span><h3>How they hold the space</h3></header>
+          <p class="dim-src">Scene index · stance, orientation, stage use</p>
+          <ul class="dim-list"></ul>
+        </article>
+      </div>
+    </section>
+
     <div class="chat-wrap">
       <div id="chat-thread" class="thread"></div>
       <div class="suggestions" id="suggestions"></div>
@@ -128,6 +163,6 @@
 <!-- HLS playback: Chrome and Firefox can't play .m3u8 natively. If this fails to
      load, app.js falls back to the player link so a clip is never a dead end. -->
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
-<script src="/static/app.js?v=7"></script>
+<script src="/static/app.js?v=8"></script>
 </body>
 </html>

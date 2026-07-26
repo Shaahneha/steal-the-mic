@@ -18,12 +18,13 @@ Built for the **Global Media Intelligence Hackathon** (hackday.videodb.io) —
 
 | | |
 |---|---|
-| **Live app** | _deploying — link here_ |
-| **Demo video** | _recording — link here_ |
+| **Demo video** | https://www.loom.com/share/c51b4c2f04e84f8ca3aa3104ccee9ed5 |
+| **Run it yourself** | four commands, see Setup below |
 | **Source** | https://github.com/Shaahneha/steal-the-mic |
 
-Two talks are pre-analysed, so you can ask a question and watch a clip without waiting for
-ingestion. Pasting your own YouTube link runs the full pipeline live.
+Five talks ship pre-analysed — two Toastmasters world champions, a presidential address, a
+conference talk, and one in Hindi that deliberately shows where the pipeline degrades. Running it
+locally takes four commands; pasting your own YouTube link then runs the full pipeline live.
 
 ---
 

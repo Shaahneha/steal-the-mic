@@ -36,6 +36,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(PROJECT_ROOT.parent / ".env")
 
 from analysis import chat as chat_engine      # noqa: E402
+from analysis import dimensions               # noqa: E402
 from analysis import memory                   # noqa: E402
 from analysis import reel as reel_builder     # noqa: E402
 from analysis import transcript as T          # noqa: E402
@@ -328,9 +329,42 @@ def job_status(job_id: str, request: Request):
 
 # ------------------------------------------------------------------- talks
 
+_reachable_cache = {}
+
+
+def seed_is_reachable():
+    """Can the configured key actually reach the talks shipped with this build?
+
+    Seeded analyses point at videos in the collection they were produced from.
+    Someone running this image with their own VideoDB key has no access to that
+    collection, so those entries would list fine and then fail on the first
+    question. Listing them anyway would be worse than shipping none — better to
+    hide what cannot work and invite them to paste their own talk.
+    """
+    talks = manifest_talks()
+    if not talks:
+        return False
+    if "value" in _reachable_cache:
+        return _reachable_cache["value"]
+
+    probe = next(iter(talks))
+    try:
+        conn = videodb.connect()
+        manifest = load_manifest()
+        coll = conn.get_collection(collection_id=manifest["collection_id"])
+        coll.get_video(probe)
+        ok = True
+    except Exception:  # noqa: BLE001 — any failure means "not ours to serve"
+        ok = False
+    _reachable_cache["value"] = ok
+    return ok
+
+
 @app.get("/api/talks")
 def list_talks(request: Request):
     rate_limit(request)
+    if not seed_is_reachable():
+        return []
     out = []
     for video_id, record in manifest_talks().items():
         if analysis_path(video_id).exists():
@@ -347,7 +381,12 @@ def list_talks(request: Request):
 def get_analysis(video_id: str, request: Request):
     rate_limit(request)
     require_known_video(video_id)
-    return JSONResponse(load_analysis(video_id))
+    analysis = load_analysis(video_id)
+    # Derived at request time rather than stored: it is a pure function of the
+    # analysis, so recomputing keeps it correct when the classifiers change
+    # without needing every talk re-analysed.
+    analysis["dimensions"] = dimensions.compute(analysis)
+    return JSONResponse(analysis)
 
 
 @app.get("/api/suggestions")
